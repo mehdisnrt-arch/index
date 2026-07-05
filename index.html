@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1f6f78">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Index Compteur Radio">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Index Compteur Radio</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Releve</p>
+          <h1>Index Compteur Radio</h1>
+        </div>
+        <button class="icon-button" id="exportButton" type="button" aria-label="Exporter CSV" title="Exporter CSV">
+          <span aria-hidden="true">CSV</span>
+        </button>
+      </header>
+
+      <section class="entry-panel" aria-labelledby="entry-title">
+        <h2 id="entry-title">Nouvel index</h2>
+
+        <form id="readingForm" autocomplete="off" novalidate>
+          <label for="dateInput">Date</label>
+          <input id="dateInput" name="date" type="text" readonly>
+
+          <label for="radioInput">Radio</label>
+          <input id="radioInput" name="radio" type="text" inputmode="text" autocapitalize="characters" required>
+
+          <label for="indexInput">Index</label>
+          <input id="indexInput" name="index" type="number" inputmode="decimal" min="0" step="0.001" required>
+
+          <p class="status" id="statusMessage" role="status" aria-live="polite"></p>
+
+          <button class="primary-button" type="submit">Enregistrer</button>
+        </form>
+      </section>
+
+      <section class="summary-panel" aria-label="Derniers releves">
+        <div class="summary-row">
+          <span>Total</span>
+          <strong id="totalCount">0</strong>
+        </div>
+        <div class="summary-row">
+          <span>Dernier radio</span>
+          <strong id="lastRadio">-</strong>
+        </div>
+      </section>
+
+      <section class="list-panel" aria-label="Releves sauvegardes">
+        <h2>Releves</h2>
+        <ul id="readingList"></ul>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

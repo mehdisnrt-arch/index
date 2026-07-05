@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Index Compteur Radio">
+  <rect width="512" height="512" rx="96" fill="#1f6f78"/>
+  <path d="M138 138h236c22 0 40 18 40 40v156c0 22-18 40-40 40H138c-22 0-40-18-40-40V178c0-22 18-40 40-40Z" fill="#fffdf8"/>
+  <path d="M154 214h204" stroke="#162326" stroke-width="26" stroke-linecap="round"/>
+  <path d="M154 276h132" stroke="#d5603f" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="352" cy="276" r="31" fill="#1f6f78"/>
+  <path d="M256 98c52 0 100 20 136 56M256 54c64 0 126 25 172 71" fill="none" stroke="#fffdf8" stroke-width="28" stroke-linecap="round"/>
+</svg>
