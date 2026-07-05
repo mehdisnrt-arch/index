@@ -1,20 +1,52 @@
 # Index Compteur Radio
 
-Static GitHub Pages PWA for recording radio meter readings.
+Application PWA pour téléphone afin d'enregistrer chaque jour l'index des compteurs électriques des radios privées au centre émetteur de Figuig.
 
-## Files
+## Radios intégrées
 
-- `index.html` is the app shell.
-- `styles.css` contains the phone-first layout.
-- `app.js` saves readings in browser storage and exports CSV.
-- `manifest.webmanifest` makes the app installable.
-- `service-worker.js` caches the app for offline use.
+- Aswat
+- Med Radio
+- Medina FM
+- Medi1
+- Cap Radio
+- Chada FM
+- HIT RADIO
+- MFM
 
-## GitHub Pages
+## Champs
 
-1. Push these files to a GitHub repository.
-2. In GitHub, open Settings > Pages.
-3. Set Source to `Deploy from a branch`.
-4. Choose the branch and `/root`.
-5. Open the published Pages URL.
+- Date automatique du jour, non modifiable
+- Radio, sélection depuis la liste
+- Index
 
+## Règle de contrôle
+
+Si le nouvel index est inférieur au dernier index enregistré pour la même radio, l'application affiche :
+
+**Index erroné**
+
+et la lecture n'est pas enregistrée.
+
+## Export Excel
+
+Le bouton **Exporter fiche Excel** génère un fichier `.xls` compatible Excel avec le même modèle que la fiche fournie :
+
+- Feuille par mois : OCT, NOV, DEC, etc.
+- Titre : Relevé du compteur d'électricité de Radio
+- Sous-titre : Au centre émetteur de Figuig
+- Colonnes : Date + radios privées
+- Ligne finale : Puissance
+- Couleurs et bordures style fiche Excel
+
+## Installation GitHub Pages
+
+1. Créer un repository GitHub.
+2. Uploader tous les fichiers de ce dossier.
+3. Aller dans Settings > Pages.
+4. Choisir Branch: main et Folder: /root.
+5. Ouvrir le lien GitHub Pages.
+6. Sur iPhone: Safari > Partager > Sur l'écran d'accueil.
+
+## Backup
+
+Utiliser **Backup JSON** régulièrement pour garder une copie des lectures.

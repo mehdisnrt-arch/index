@@ -1,59 +1,36 @@
-var cacheName = "index-compteur-radio-v1";
-var filesToCache = [
+const CACHE_NAME = "index-compteur-radio-v2";
+const ASSETS = [
   "./",
-  "index.html",
-  "styles.css",
-  "app.js",
-  "manifest.webmanifest",
-  "icon.svg",
-  "icon-180.png",
-  "icon-192.png",
-  "icon-512.png"
+  "./index.html",
+  "./style.css",
+  "./script.js",
+  "./manifest.json",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
-self.addEventListener("install", function (event) {
-  event.waitUntil(
-    caches.open(cacheName).then(function (cache) {
-      return cache.addAll(filesToCache);
-    })
-  );
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
 });
 
-self.addEventListener("activate", function (event) {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(keys.map(function (key) {
-        if (key !== cacheName) {
-          return caches.delete(key);
-        }
-        return Promise.resolve();
-      }));
-    })
+    caches.keys().then((keys) => Promise.all(keys.map((key) => {
+      if (key !== CACHE_NAME) return caches.delete(key);
+      return null;
+    })))
   );
   self.clients.claim();
 });
 
-self.addEventListener("fetch", function (event) {
-  if (event.request.method !== "GET") {
-    return;
-  }
-
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      if (cached) {
-        return cached;
-      }
-
-      return fetch(event.request).then(function (response) {
-        var copy = response.clone();
-        caches.open(cacheName).then(function (cache) {
-          cache.put(event.request, copy);
-        });
-        return response;
-      }).catch(function () {
-        return caches.match("index.html");
-      });
-    })
+    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+      return response;
+    }).catch(() => caches.match("./index.html")))
   );
 });
