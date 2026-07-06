@@ -1,7 +1,8 @@
-var cacheName = "index-compteur-radio-v3";
+var cacheName = "index-compteur-radio-v4";
 var filesToCache = [
   "./",
   "index.html",
+  "config.js",
   "styles.css",
   "app.js",
   "manifest.webmanifest",

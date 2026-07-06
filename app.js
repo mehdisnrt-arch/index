@@ -1,8 +1,6 @@
 (function () {
   "use strict";
 
-  var storageKey = "index-compteur-radio-readings-v2";
-  var oldStorageKey = "index-compteur-radio-readings-v1";
   var radioNames = [
     "Aswat",
     "Med Radio",
@@ -34,16 +32,25 @@
     "MFM": "80 W"
   };
   var monthLabels = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUN", "JUL", "AOUT", "SEP", "OCT", "NOV", "DEC"];
+  var adminRefreshTimer = null;
+  var adminRows = [];
+
+  var config = window.INDEX_APP_CONFIG || {};
+  var scriptUrl = (config.googleScriptUrl || "").trim();
+  var isAdmin = new URLSearchParams(window.location.search).get("admin") === "1" || window.location.hash === "#admin";
 
   var form = document.getElementById("readingForm");
   var dateInput = document.getElementById("dateInput");
   var radioInput = document.getElementById("radioInput");
   var indexInput = document.getElementById("indexInput");
   var statusMessage = document.getElementById("statusMessage");
+  var refreshButton = document.getElementById("refreshButton");
   var exportButton = document.getElementById("exportButton");
+  var adminPanel = document.getElementById("adminPanel");
+  var adminKeyInput = document.getElementById("adminKeyInput");
   var totalCount = document.getElementById("totalCount");
-  var lastRadio = document.getElementById("lastRadio");
-  var readingList = document.getElementById("readingList");
+  var lastSync = document.getElementById("lastSync");
+  var adminTableBody = document.getElementById("adminTableBody");
 
   function todayIso() {
     var now = new Date();
@@ -53,39 +60,8 @@
     return year + "-" + month + "-" + day;
   }
 
-  function readStore() {
-    try {
-      var raw = localStorage.getItem(storageKey);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-
-      var oldRaw = localStorage.getItem(oldStorageKey);
-      if (!oldRaw) {
-        return [];
-      }
-
-      var migrated = JSON.parse(oldRaw).map(function (reading) {
-        return {
-          date: reading.date,
-          radio: radioLabel(reading.radio),
-          index: Number(reading.index),
-          savedAt: reading.savedAt || new Date().toISOString()
-        };
-      });
-      writeStore(migrated);
-      return migrated;
-    } catch (error) {
-      return [];
-    }
-  }
-
-  function writeStore(readings) {
-    localStorage.setItem(storageKey, JSON.stringify(readings));
-  }
-
   function normalizeRadio(value) {
-    return value.trim().replace(/\s+/g, " ").toUpperCase();
+    return String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
   }
 
   function radioLabel(value) {
@@ -95,28 +71,83 @@
         return radioNames[index];
       }
     }
-    return value.trim();
-  }
-
-  function getLastForRadio(readings, radio) {
-    var normalizedRadio = normalizeRadio(radio);
-    for (var index = readings.length - 1; index >= 0; index -= 1) {
-      if (normalizeRadio(readings[index].radio) === normalizedRadio) {
-        return readings[index];
-      }
-    }
-    if (baselineIndexes[normalizedRadio] !== undefined) {
-      return {
-        radio: radio,
-        index: baselineIndexes[normalizedRadio]
-      };
-    }
-    return null;
+    return String(value || "").trim();
   }
 
   function setStatus(message, type) {
     statusMessage.textContent = message;
     statusMessage.className = type ? "status " + type : "status";
+  }
+
+  function setBusy(busy) {
+    form.querySelectorAll("input, select, button").forEach(function (control) {
+      control.disabled = busy;
+    });
+  }
+
+  function api(action, params) {
+    return new Promise(function (resolve, reject) {
+      if (!scriptUrl || scriptUrl.indexOf("PASTE_") === 0) {
+        reject(new Error("Google Apps Script non configuré"));
+        return;
+      }
+
+      var callbackName = "__indexRadio" + Date.now() + Math.random().toString(16).slice(2);
+      var url = new URL(scriptUrl);
+      var script = document.createElement("script");
+      var timer = window.setTimeout(function () {
+        cleanup();
+        reject(new Error("Connexion Google Sheets impossible"));
+      }, 15000);
+
+      function cleanup() {
+        window.clearTimeout(timer);
+        delete window[callbackName];
+        script.remove();
+      }
+
+      window[callbackName] = function (payload) {
+        cleanup();
+        if (payload && payload.ok) {
+          resolve(payload);
+          return;
+        }
+        reject(new Error((payload && payload.error) || "Erreur Google Sheets"));
+      };
+
+      url.searchParams.set("action", action);
+      url.searchParams.set("callback", callbackName);
+      Object.keys(params || {}).forEach(function (key) {
+        url.searchParams.set(key, params[key]);
+      });
+      script.onerror = function () {
+        cleanup();
+        reject(new Error("Connexion Google Sheets impossible"));
+      };
+      script.src = url.toString();
+      document.head.append(script);
+    });
+  }
+
+  function getBaselineLast(radio) {
+    var normalized = normalizeRadio(radio);
+    if (baselineIndexes[normalized] === undefined) {
+      return null;
+    }
+    return {
+      radio: radio,
+      index: baselineIndexes[normalized]
+    };
+  }
+
+  function readLastIndex(radio) {
+    return api("last", {
+      radio: radio
+    }).then(function (payload) {
+      return payload.data || getBaselineLast(radio);
+    }).catch(function () {
+      return getBaselineLast(radio);
+    });
   }
 
   function formatIndex(value) {
@@ -125,40 +156,203 @@
     });
   }
 
-  function render() {
-    var readings = readStore();
-    var latest = readings[readings.length - 1];
-    totalCount.textContent = String(readings.length);
-    lastRadio.textContent = latest ? latest.radio : "-";
-    readingList.replaceChildren();
+  function formatTime(date) {
+    return date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
 
-    if (readings.length === 0) {
-      var emptyItem = document.createElement("li");
-      emptyItem.className = "empty-state";
-      emptyItem.textContent = "Aucun releve";
-      readingList.append(emptyItem);
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    var radio = radioLabel(radioInput.value);
+    var parsedIndex = Number(indexInput.value);
+
+    if (!radio || !Number.isFinite(parsedIndex)) {
+      setStatus("Champs requis", "error");
       return;
     }
 
-    readings.slice().reverse().slice(0, 12).forEach(function (reading) {
-      var item = document.createElement("li");
-      var main = document.createElement("span");
-      var radio = document.createElement("span");
-      var date = document.createElement("span");
-      var readingIndex = document.createElement("span");
+    setBusy(true);
+    setStatus("Enregistrement...", "");
 
-      main.className = "reading-main";
-      radio.className = "reading-radio";
-      date.className = "reading-date";
-      readingIndex.className = "reading-index";
+    readLastIndex(radio).then(function (lastReading) {
+      if (lastReading && parsedIndex < Number(lastReading.index)) {
+        throw new Error("Index erroné");
+      }
 
-      radio.textContent = reading.radio;
-      date.textContent = reading.date;
-      readingIndex.textContent = formatIndex(reading.index);
+      return api("add", {
+        date: todayIso(),
+        radio: radio,
+        index: parsedIndex
+      });
+    }).then(function () {
+      dateInput.value = todayIso();
+      radioInput.value = "";
+      indexInput.value = "";
+      setStatus("Index enregistré", "success");
+      if (isAdmin) {
+        refreshAdminData();
+      }
+    }).catch(function (error) {
+      setStatus(error.message === "Index erroné" ? "Index erroné" : error.message, "error");
+    }).finally(function () {
+      setBusy(false);
+      radioInput.focus();
+    });
+  }
 
-      main.append(radio, date);
-      item.append(main, readingIndex);
-      readingList.append(item);
+  function requireAdminKey() {
+    var key = adminKeyInput.value.trim();
+    if (!key) {
+      setStatus("Code admin requis", "error");
+      adminKeyInput.focus();
+      return "";
+    }
+    return key;
+  }
+
+  function refreshAdminData() {
+    if (!isAdmin) {
+      setStatus("Actualisé", "success");
+      return Promise.resolve(false);
+    }
+
+    var adminKey = requireAdminKey();
+    if (!adminKey) {
+      return Promise.resolve(false);
+    }
+
+    refreshButton.disabled = true;
+    return api("list", {
+      adminKey: adminKey
+    }).then(function (payload) {
+      adminRows = payload.data || [];
+      renderAdminRows();
+      totalCount.textContent = String(adminRows.length);
+      lastSync.textContent = formatTime(new Date());
+      setStatus("Actualisé", "success");
+      return true;
+    }).catch(function (error) {
+      setStatus(error.message, "error");
+      return false;
+    }).finally(function () {
+      refreshButton.disabled = false;
+    });
+  }
+
+  function makeRadioSelect(value) {
+    var select = document.createElement("select");
+    radioNames.forEach(function (radio) {
+      var option = document.createElement("option");
+      option.value = radio;
+      option.textContent = radio;
+      if (radio === radioLabel(value)) {
+        option.selected = true;
+      }
+      select.append(option);
+    });
+    return select;
+  }
+
+  function renderAdminRows() {
+    adminTableBody.replaceChildren();
+
+    if (adminRows.length === 0) {
+      var emptyRow = document.createElement("tr");
+      var emptyCell = document.createElement("td");
+      emptyCell.colSpan = 5;
+      emptyCell.className = "empty-table";
+      emptyCell.textContent = "Aucun relevé";
+      emptyRow.append(emptyCell);
+      adminTableBody.append(emptyRow);
+      return;
+    }
+
+    adminRows.slice().reverse().forEach(function (reading) {
+      var row = document.createElement("tr");
+      var dateCell = document.createElement("td");
+      var radioCell = document.createElement("td");
+      var indexCell = document.createElement("td");
+      var savedCell = document.createElement("td");
+      var actionsCell = document.createElement("td");
+      var dateEdit = document.createElement("input");
+      var radioEdit = makeRadioSelect(reading.radio);
+      var indexEdit = document.createElement("input");
+      var saveButton = document.createElement("button");
+      var deleteButton = document.createElement("button");
+
+      dateEdit.type = "date";
+      dateEdit.value = reading.date || "";
+      indexEdit.type = "number";
+      indexEdit.inputMode = "decimal";
+      indexEdit.step = "0.001";
+      indexEdit.value = reading.index;
+      saveButton.type = "button";
+      deleteButton.type = "button";
+      saveButton.className = "table-button save";
+      deleteButton.className = "table-button delete";
+      saveButton.textContent = "OK";
+      deleteButton.textContent = "Supprimer";
+      savedCell.textContent = reading.createdAt || "";
+
+      saveButton.addEventListener("click", function () {
+        updateReading(reading.id, dateEdit.value, radioEdit.value, indexEdit.value);
+      });
+      deleteButton.addEventListener("click", function () {
+        deleteReading(reading.id);
+      });
+
+      dateCell.append(dateEdit);
+      radioCell.append(radioEdit);
+      indexCell.append(indexEdit);
+      actionsCell.append(saveButton, deleteButton);
+      row.append(dateCell, radioCell, indexCell, savedCell, actionsCell);
+      adminTableBody.append(row);
+    });
+  }
+
+  function updateReading(id, date, radio, index) {
+    var adminKey = requireAdminKey();
+    var parsedIndex = Number(index);
+    if (!adminKey || !date || !radio || !Number.isFinite(parsedIndex)) {
+      setStatus("Champs requis", "error");
+      return;
+    }
+
+    api("edit", {
+      adminKey: adminKey,
+      id: id,
+      date: date,
+      radio: radioLabel(radio),
+      index: parsedIndex
+    }).then(function () {
+      setStatus("Modifié", "success");
+      return refreshAdminData();
+    }).catch(function (error) {
+      setStatus(error.message, "error");
+    });
+  }
+
+  function deleteReading(id) {
+    var adminKey = requireAdminKey();
+    if (!adminKey) {
+      return;
+    }
+    if (!window.confirm("Supprimer cet index ?")) {
+      return;
+    }
+
+    api("delete", {
+      adminKey: adminKey,
+      id: id
+    }).then(function () {
+      setStatus("Supprimé", "success");
+      return refreshAdminData();
+    }).catch(function (error) {
+      setStatus(error.message, "error");
     });
   }
 
@@ -230,8 +424,8 @@
   }
 
   function exportExcel() {
-    var readings = readStore();
-    var grouped = groupReadingsByMonth(readings);
+    var rows = adminRows.slice();
+    var grouped = groupReadingsByMonth(rows);
     var monthKeys = Object.keys(grouped).sort();
 
     if (monthKeys.length === 0) {
@@ -270,48 +464,49 @@
     URL.revokeObjectURL(url);
   }
 
-  function handleSubmit(event) {
-    event.preventDefault();
-
-    var readings = readStore();
-    var radio = radioLabel(radioInput.value);
-    var parsedIndex = Number(indexInput.value);
-
-    if (!radio || !Number.isFinite(parsedIndex)) {
-      setStatus("Champs requis", "error");
-      return;
-    }
-
-    var lastReading = getLastForRadio(readings, radio);
-    if (lastReading && parsedIndex < Number(lastReading.index)) {
-      setStatus("Index erroné", "error");
-      return;
-    }
-
-    readings.push({
-      date: todayIso(),
-      radio: radio,
-      index: parsedIndex,
-      savedAt: new Date().toISOString()
-    });
-
-    writeStore(readings);
+  function init() {
     dateInput.value = todayIso();
-    radioInput.value = "";
-    indexInput.value = "";
-    radioInput.focus();
-    setStatus("Index enregistré", "success");
-    render();
-  }
+    adminPanel.hidden = !isAdmin;
+    exportButton.hidden = !isAdmin;
 
-  dateInput.value = todayIso();
-  form.addEventListener("submit", handleSubmit);
-  exportButton.addEventListener("click", exportExcel);
-  render();
-
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("service-worker.js");
+    form.addEventListener("submit", handleSubmit);
+    refreshButton.addEventListener("click", refreshAdminData);
+    exportButton.addEventListener("click", function () {
+      if (adminRows.length > 0) {
+        exportExcel();
+        return;
+      }
+      refreshAdminData().then(function (loaded) {
+        if (loaded) {
+          exportExcel();
+        }
+      });
     });
+
+    if (!scriptUrl || scriptUrl.indexOf("PASTE_") === 0) {
+      setStatus("Configurer Google Apps Script", "error");
+    }
+
+    if (isAdmin) {
+      adminRefreshTimer = window.setInterval(function () {
+        if (adminKeyInput.value.trim()) {
+          refreshAdminData();
+        }
+      }, 10000);
+    }
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("service-worker.js");
+      });
+    }
   }
+
+  window.addEventListener("beforeunload", function () {
+    if (adminRefreshTimer) {
+      window.clearInterval(adminRefreshTimer);
+    }
+  });
+
+  init();
 }());
