@@ -2,6 +2,8 @@
 
 Static GitHub Pages PWA for shared radio meter readings backed by Google Sheets and Google Apps Script.
 
+Google Sheets is the central database and source of truth. Phones do not keep the main database.
+
 ## Files
 
 - `index.html` is the app shell.

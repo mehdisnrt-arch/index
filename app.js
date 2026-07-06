@@ -11,16 +11,6 @@
     "HIT RADIO",
     "MFM"
   ];
-  var baselineIndexes = {
-    "ASWAT": 4310,
-    "MED RADIO": 3531,
-    "MEDINA FM": 60049,
-    "MEDI1": 7137,
-    "CAP RADIO": 78734,
-    "CHADA FM": 6511,
-    "HIT RADIO": 6671,
-    "MFM": 312562
-  };
   var powerByRadio = {
     "Aswat": "0 W",
     "Med Radio": "467 W",
@@ -35,6 +25,7 @@
   var adminRefreshTimer = null;
   var adminRows = [];
 
+  // Google Sheets is the source of truth. Phones do not keep the main database.
   var config = window.INDEX_APP_CONFIG || {};
   var scriptUrl = (config.googleScriptUrl || "").trim();
   var isAdmin = new URLSearchParams(window.location.search).get("admin") === "1" || window.location.hash === "#admin";
@@ -117,6 +108,7 @@
 
       url.searchParams.set("action", action);
       url.searchParams.set("callback", callbackName);
+      url.searchParams.set("_", String(Date.now()));
       Object.keys(params || {}).forEach(function (key) {
         url.searchParams.set(key, params[key]);
       });
@@ -126,27 +118,6 @@
       };
       script.src = url.toString();
       document.head.append(script);
-    });
-  }
-
-  function getBaselineLast(radio) {
-    var normalized = normalizeRadio(radio);
-    if (baselineIndexes[normalized] === undefined) {
-      return null;
-    }
-    return {
-      radio: radio,
-      index: baselineIndexes[normalized]
-    };
-  }
-
-  function readLastIndex(radio) {
-    return api("last", {
-      radio: radio
-    }).then(function (payload) {
-      return payload.data || getBaselineLast(radio);
-    }).catch(function () {
-      return getBaselineLast(radio);
     });
   }
 
@@ -178,16 +149,10 @@
     setBusy(true);
     setStatus("Enregistrement...", "");
 
-    readLastIndex(radio).then(function (lastReading) {
-      if (lastReading && parsedIndex < Number(lastReading.index)) {
-        throw new Error("Index erroné");
-      }
-
-      return api("add", {
+    api("add", {
         date: todayIso(),
         radio: radio,
         index: parsedIndex
-      });
     }).then(function () {
       dateInput.value = todayIso();
       radioInput.value = "";
