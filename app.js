@@ -1,7 +1,39 @@
 (function () {
   "use strict";
 
-  var storageKey = "index-compteur-radio-readings-v1";
+  var storageKey = "index-compteur-radio-readings-v2";
+  var oldStorageKey = "index-compteur-radio-readings-v1";
+  var radioNames = [
+    "Aswat",
+    "Med Radio",
+    "Medina FM",
+    "Medi1",
+    "Cap Radio",
+    "Chada FM",
+    "HIT RADIO",
+    "MFM"
+  ];
+  var baselineIndexes = {
+    "ASWAT": 4310,
+    "MED RADIO": 3531,
+    "MEDINA FM": 60049,
+    "MEDI1": 7137,
+    "CAP RADIO": 78734,
+    "CHADA FM": 6511,
+    "HIT RADIO": 6671,
+    "MFM": 312562
+  };
+  var powerByRadio = {
+    "Aswat": "0 W",
+    "Med Radio": "467 W",
+    "Medina FM": "494 W",
+    "Medi1": "1030 W",
+    "Cap Radio": "403 W",
+    "Chada FM": "107",
+    "HIT RADIO": "505 W",
+    "MFM": "80 W"
+  };
+  var monthLabels = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUN", "JUL", "AOUT", "SEP", "OCT", "NOV", "DEC"];
 
   var form = document.getElementById("readingForm");
   var dateInput = document.getElementById("dateInput");
@@ -24,7 +56,25 @@
   function readStore() {
     try {
       var raw = localStorage.getItem(storageKey);
-      return raw ? JSON.parse(raw) : [];
+      if (raw) {
+        return JSON.parse(raw);
+      }
+
+      var oldRaw = localStorage.getItem(oldStorageKey);
+      if (!oldRaw) {
+        return [];
+      }
+
+      var migrated = JSON.parse(oldRaw).map(function (reading) {
+        return {
+          date: reading.date,
+          radio: radioLabel(reading.radio),
+          index: Number(reading.index),
+          savedAt: reading.savedAt || new Date().toISOString()
+        };
+      });
+      writeStore(migrated);
+      return migrated;
     } catch (error) {
       return [];
     }
@@ -38,11 +88,28 @@
     return value.trim().replace(/\s+/g, " ").toUpperCase();
   }
 
+  function radioLabel(value) {
+    var normalized = normalizeRadio(value);
+    for (var index = 0; index < radioNames.length; index += 1) {
+      if (normalizeRadio(radioNames[index]) === normalized) {
+        return radioNames[index];
+      }
+    }
+    return value.trim();
+  }
+
   function getLastForRadio(readings, radio) {
+    var normalizedRadio = normalizeRadio(radio);
     for (var index = readings.length - 1; index >= 0; index -= 1) {
-      if (readings[index].radio === radio) {
+      if (normalizeRadio(readings[index].radio) === normalizedRadio) {
         return readings[index];
       }
+    }
+    if (baselineIndexes[normalizedRadio] !== undefined) {
+      return {
+        radio: radio,
+        index: baselineIndexes[normalizedRadio]
+      };
     }
     return null;
   }
@@ -95,28 +162,108 @@
     });
   }
 
-  function escapeCsvCell(value) {
-    var text = String(value).replace(/"/g, "\"\"");
-    return "\"" + text + "\"";
+  function escapeXml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
-  function exportCsv() {
+  function groupReadingsByMonth(readings) {
+    var grouped = {};
+    readings.forEach(function (reading) {
+      if (!reading.date) {
+        return;
+      }
+      var monthKey = reading.date.slice(0, 7);
+      var dayKey = reading.date;
+      var radio = radioLabel(reading.radio);
+      grouped[monthKey] = grouped[monthKey] || {};
+      grouped[monthKey][dayKey] = grouped[monthKey][dayKey] || {};
+      grouped[monthKey][dayKey][radio] = reading.index;
+    });
+    return grouped;
+  }
+
+  function worksheetXml(monthKey, days) {
+    var dateKeys = Object.keys(days).sort();
+    var monthNumber = Number(monthKey.slice(5, 7));
+    var sheetName = monthLabels[monthNumber - 1] || monthKey;
+    var xml = "";
+
+    xml += "<Worksheet ss:Name=\"" + escapeXml(sheetName) + "\"><Table ss:ExpandedColumnCount=\"9\">";
+    xml += "<Column ss:Width=\"90\"/>";
+    radioNames.forEach(function () {
+      xml += "<Column ss:Width=\"82\"/>";
+    });
+    xml += "<Row/><Row/><Row/><Row/><Row/><Row/>";
+    xml += "<Row><Cell ss:MergeAcross=\"8\" ss:StyleID=\"Title\"><Data ss:Type=\"String\">Releve du compteur d'electricite de Radio</Data></Cell></Row>";
+    xml += "<Row><Cell ss:MergeAcross=\"8\" ss:StyleID=\"Subtitle\"><Data ss:Type=\"String\">Au centre emetteur de Figuig</Data></Cell></Row>";
+    xml += "<Row/><Row/>";
+    xml += "<Row ss:StyleID=\"Header\"><Cell><Data ss:Type=\"String\">Date</Data></Cell>";
+    radioNames.forEach(function (radio) {
+      xml += "<Cell><Data ss:Type=\"String\">" + escapeXml(radio) + "</Data></Cell>";
+    });
+    xml += "</Row>";
+
+    dateKeys.forEach(function (dateKey) {
+      xml += "<Row><Cell ss:StyleID=\"Date\"><Data ss:Type=\"DateTime\">" + escapeXml(dateKey) + "T00:00:00.000</Data></Cell>";
+      radioNames.forEach(function (radio) {
+        var value = days[dateKey][radio];
+        if (value === undefined || value === "") {
+          xml += "<Cell ss:StyleID=\"Cell\"/>";
+        } else {
+          xml += "<Cell ss:StyleID=\"Cell\"><Data ss:Type=\"Number\">" + escapeXml(value) + "</Data></Cell>";
+        }
+      });
+      xml += "</Row>";
+    });
+
+    xml += "<Row ss:StyleID=\"Footer\"><Cell><Data ss:Type=\"String\">Puissance </Data></Cell>";
+    radioNames.forEach(function (radio) {
+      xml += "<Cell><Data ss:Type=\"String\">" + escapeXml(powerByRadio[radio] || "") + "</Data></Cell>";
+    });
+    xml += "</Row>";
+    xml += "</Table></Worksheet>";
+    return xml;
+  }
+
+  function exportExcel() {
     var readings = readStore();
-    var rows = [["Date", "Radio", "Index"]].concat(
-      readings.map(function (reading) {
-        return [reading.date, reading.radio, reading.index];
-      })
-    );
-    var csv = rows.map(function (row) {
-      return row.map(escapeCsvCell).join(";");
-    }).join("\r\n");
-    var blob = new Blob(["\uFEFF" + csv], {
-      type: "text/csv;charset=utf-8"
+    var grouped = groupReadingsByMonth(readings);
+    var monthKeys = Object.keys(grouped).sort();
+
+    if (monthKeys.length === 0) {
+      var currentMonth = todayIso().slice(0, 7);
+      grouped[currentMonth] = {};
+      monthKeys = [currentMonth];
+    }
+
+    var workbook = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+    workbook += "<?mso-application progid=\"Excel.Sheet\"?>";
+    workbook += "<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">";
+    workbook += "<Styles>";
+    workbook += "<Style ss:ID=\"Default\" ss:Name=\"Normal\"><Alignment ss:Vertical=\"Center\"/><Font ss:FontName=\"Calibri\" ss:Size=\"11\"/></Style>";
+    workbook += "<Style ss:ID=\"Title\"><Alignment ss:Horizontal=\"Center\"/><Font ss:Bold=\"1\" ss:Size=\"14\"/></Style>";
+    workbook += "<Style ss:ID=\"Subtitle\"><Alignment ss:Horizontal=\"Center\"/><Font ss:Bold=\"1\" ss:Size=\"12\"/></Style>";
+    workbook += "<Style ss:ID=\"Header\"><Alignment ss:Horizontal=\"Center\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders><Font ss:Bold=\"1\"/></Style>";
+    workbook += "<Style ss:ID=\"Cell\"><Alignment ss:Horizontal=\"Center\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders></Style>";
+    workbook += "<Style ss:ID=\"Date\"><Alignment ss:Horizontal=\"Center\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders><NumberFormat ss:Format=\"Short Date\"/></Style>";
+    workbook += "<Style ss:ID=\"Footer\"><Alignment ss:Horizontal=\"Center\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders><Font ss:Bold=\"1\"/></Style>";
+    workbook += "</Styles>";
+    monthKeys.forEach(function (monthKey) {
+      workbook += worksheetXml(monthKey, grouped[monthKey]);
+    });
+    workbook += "</Workbook>";
+
+    var blob = new Blob(["\uFEFF" + workbook], {
+      type: "application/vnd.ms-excel;charset=utf-8"
     });
     var url = URL.createObjectURL(blob);
     var link = document.createElement("a");
     link.href = url;
-    link.download = "index-compteur-radio-" + todayIso() + ".csv";
+    link.download = "index-compteur-radio-" + todayIso() + ".xls";
     document.body.append(link);
     link.click();
     link.remove();
@@ -127,7 +274,7 @@
     event.preventDefault();
 
     var readings = readStore();
-    var radio = normalizeRadio(radioInput.value);
+    var radio = radioLabel(radioInput.value);
     var parsedIndex = Number(indexInput.value);
 
     if (!radio || !Number.isFinite(parsedIndex)) {
@@ -153,13 +300,13 @@
     radioInput.value = "";
     indexInput.value = "";
     radioInput.focus();
-    setStatus("Index enregistre", "success");
+    setStatus("Index enregistré", "success");
     render();
   }
 
   dateInput.value = todayIso();
   form.addEventListener("submit", handleSubmit);
-  exportButton.addEventListener("click", exportCsv);
+  exportButton.addEventListener("click", exportExcel);
   render();
 
   if ("serviceWorker" in navigator) {

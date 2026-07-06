@@ -32,7 +32,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -102,7 +103,8 @@ label {
   font-weight: 750;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 52px;
   border: 1px solid var(--line);
@@ -114,7 +116,16 @@ input {
   outline: none;
 }
 
-input:focus {
+select {
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--accent-dark) 50%) calc(100% - 22px) 22px / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--accent-dark) 50%, transparent 50%) calc(100% - 15px) 22px / 7px 7px no-repeat,
+    #fffdf8;
+}
+
+input:focus,
+select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(31, 111, 120, 0.16);
 }

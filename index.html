@@ -1,84 +1,76 @@
 <!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#003366">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Index Radio">
-  <title>Index Compteur Radio</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header class="app-header">
-    <div>
-      <p class="eyebrow">Centre émetteur de Figuig</p>
-      <h1>Relevé compteur Radio</h1>
-    </div>
-    <div class="badge" id="todayBadge">--/--/----</div>
-  </header>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1f6f78">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Index Compteur Radio">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Index Compteur Radio</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Releve</p>
+          <h1>Index Compteur Radio</h1>
+        </div>
+        <button class="icon-button" id="exportButton" type="button" aria-label="Exporter Excel" title="Exporter Excel">
+          <span aria-hidden="true">XLS</span>
+        </button>
+      </header>
 
-  <main class="container">
-    <section class="card">
-      <h2>Nouvelle lecture</h2>
-      <form id="readingForm" autocomplete="off">
-        <label for="dateDisplay">Date</label>
-        <input id="dateDisplay" name="dateDisplay" type="text" readonly>
-        <input id="date" name="date" type="hidden">
+      <section class="entry-panel" aria-labelledby="entry-title">
+        <h2 id="entry-title">Nouvel index</h2>
 
-        <label for="radio">Radio</label>
-        <select id="radio" name="radio" required>
-          <option value="">Choisir radio</option>
-        </select>
+        <form id="readingForm" autocomplete="off" novalidate>
+          <label for="dateInput">Date</label>
+          <input id="dateInput" name="date" type="text" readonly>
 
-        <label for="indexValue">Index</label>
-        <input id="indexValue" name="indexValue" type="number" inputmode="numeric" min="0" step="1" placeholder="Ex: 15240" required>
+          <label for="radioInput">Radio</label>
+          <select id="radioInput" name="radio" required>
+            <option value="">Choisir Radio</option>
+            <option value="Aswat">Aswat</option>
+            <option value="Med Radio">Med Radio</option>
+            <option value="Medina FM">Medina FM</option>
+            <option value="Medi1">Medi1</option>
+            <option value="Cap Radio">Cap Radio</option>
+            <option value="Chada FM">Chada FM</option>
+            <option value="HIT RADIO">HIT RADIO</option>
+            <option value="MFM">MFM</option>
+          </select>
 
-        <div id="previousInfo" class="hint">Dernier index: —</div>
-        <div id="message" class="message" role="status" aria-live="polite"></div>
+          <label for="indexInput">Index</label>
+          <input id="indexInput" name="index" type="number" inputmode="decimal" min="0" step="0.001" required>
 
-        <button type="submit" class="primary">Enregistrer</button>
-      </form>
-    </section>
+          <p class="status" id="statusMessage" role="status" aria-live="polite"></p>
 
-    <section class="card actions-card">
-      <h2>Fiche Excel</h2>
-      <label for="search">Rechercher</label>
-      <input id="search" type="search" placeholder="Date ou radio">
-      <div class="button-row">
-        <button id="exportFiche" type="button">Exporter fiche Excel</button>
-        <button id="backupJson" type="button">Backup JSON</button>
-      </div>
-      <label class="import-label" for="importJson">Importer backup JSON</label>
-      <input id="importJson" type="file" accept="application/json,.json">
-      <button id="clearAll" type="button" class="danger ghost">Effacer tout</button>
-    </section>
+          <button class="primary-button" type="submit">Enregistrer</button>
+        </form>
+      </section>
 
-    <section class="card preview-card">
-      <div class="section-title">
-        <h2>Aperçu fiche</h2>
-        <span class="mini">même structure que le fichier Excel</span>
-      </div>
-      <div class="sheet-preview" id="sheetPreview"></div>
-    </section>
+      <section class="summary-panel" aria-label="Derniers releves">
+        <div class="summary-row">
+          <span>Total</span>
+          <strong id="totalCount">0</strong>
+        </div>
+        <div class="summary-row">
+          <span>Dernier radio</span>
+          <strong id="lastRadio">-</strong>
+        </div>
+      </section>
 
-    <section class="card">
-      <div class="section-title">
-        <h2>Lectures enregistrées</h2>
-        <span id="countBadge" class="count">0</span>
-      </div>
-      <div id="recordsList" class="records"></div>
-      <p id="emptyState" class="empty">Aucune lecture enregistrée.</p>
-    </section>
-  </main>
+      <section class="list-panel" aria-label="Releves sauvegardes">
+        <h2>Releves</h2>
+        <ul id="readingList"></ul>
+      </section>
+    </main>
 
-  <footer class="footer">
-    <span id="offlineStatus">Prêt</span>
-  </footer>
-
-  <script src="script.js"></script>
-</body>
+    <script src="app.js" defer></script>
+  </body>
 </html>

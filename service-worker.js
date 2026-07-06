@@ -1,36 +1,57 @@
-const CACHE_NAME = "index-compteur-radio-v2";
-const ASSETS = [
+var cacheName = "index-compteur-radio-v3";
+var filesToCache = [
   "./",
-  "./index.html",
-  "./style.css",
-  "./script.js",
-  "./manifest.json",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "index.html",
+  "styles.css",
+  "app.js",
+  "manifest.webmanifest",
+  "icon.svg",
+  "icon-180.png",
+  "icon-192.png",
+  "icon-512.png"
 ];
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+self.addEventListener("install", function (event) {
+  event.waitUntil(
+    caches.open(cacheName).then(function (cache) {
+      return cache.addAll(filesToCache);
+    })
+  );
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener("activate", function (event) {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((key) => {
-      if (key !== CACHE_NAME) return caches.delete(key);
-      return null;
-    })))
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (key) {
+        if (key !== cacheName) {
+          return caches.delete(key);
+        }
+        return Promise.resolve();
+      }));
+    })
   );
   self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+self.addEventListener("fetch", function (event) {
+  if (event.request.method !== "GET") {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
-      const clone = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+    fetch(event.request).then(function (response) {
+      if (response && response.ok) {
+        var copy = response.clone();
+        caches.open(cacheName).then(function (cache) {
+          cache.put(event.request, copy);
+        });
+      }
       return response;
-    }).catch(() => caches.match("./index.html")))
+    }).catch(function () {
+      return caches.match(event.request).then(function (cached) {
+        return cached || caches.match("index.html");
+      });
+    })
   );
 });
